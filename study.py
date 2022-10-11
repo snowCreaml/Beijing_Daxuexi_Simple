@@ -20,6 +20,8 @@ def study(username, password, ua):
             touch = bjySession.get(url="https://m.bjyouth.net/site/login")
             capUrl = "https://m.bjyouth.net" + re.findall(
                 r'src="(/site/captcha.+)" alt=', touch.text)[0]
+            if "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQD5uIDebA2qU746e/NVPiQSBA0Q" not in touch.text:
+                print("记录的公钥没有出现")
             capText = cap_recognize(bjySession.get(url=capUrl).content)
             # print(f'验证码识别: {capText}')
             login_r = bjySession.post('https://m.bjyouth.net/site/login',
@@ -42,7 +44,7 @@ def study(username, password, ua):
                 print(r)
             url = r['newCourse']['url']
             title = r['newCourse']['title']
-            course_id = r['newCourse']['id']
+            courseId = r['newCourse']['id']
             break
         except:
             time.sleep(3)
@@ -53,14 +55,24 @@ def study(username, password, ua):
         print('登入失败,退出')
         return 0
 
-    haveLearned = bjySession.get('https://m.bjyouth.net/dxx/my-integral?type=2&page=1&limit=15').json()
+    orgIdTemp = ''
     orgPattern = re.compile(r'\(|（\s*(\d+)\s*）|\)')  # 组织id应该是被括号包的
-    rTemp = orgPattern.search(haveLearned['data'][0]['orgname'])
-    if rTemp:
-        orgID = rTemp.group(1)
-    else:
+    learnedInfo = 'https://m.bjyouth.net/dxx/my-study?page=1&limit=15&year=' + time.strftime("%Y", time.localtime())
+    haveLearned = bjySession.get(learnedInfo).json()
+
+    orgID = ""
+    try:
+        orgIdTemp = orgPattern.search(haveLearned['data'][0]['orgname'])
+        orgID = orgIdTemp.group(1)
+    except:
+        print('获取组织id-2')
+        orgIdTemp = orgPattern.search(bjySession.get('https://m.bjyouth.net/dxx/my').json()['data']['org'])
+        if orgIdTemp:
+            orgID = orgIdTemp.group(1)
+
+    if not orgID:
         orgID = '172442'
-        print(f"无法从{haveLearned['data'][0]['orgname']}中获取orgID")
+        print(f"无法获取orgID")
 
     if f"学习课程：《{title}》" in list(map(lambda x: x['text'], haveLearned['data'])):
         print(f'{title} 在运行前已完成,退出')
@@ -73,15 +85,13 @@ def study(username, password, ua):
     #     return 0
     #
     # end_img_url = f'https://h5.cyol.com/special/daxuexi/{result.group(1)}/images/end.jpg'
-    study_url = f"https://m.bjyouth.net/dxx/check?id={course_id}&org_id={orgID}"
-
-    r = bjySession.get(study_url)
+    study_url = f"https://m.bjyouth.net/dxx/check"
+    r = bjySession.post(study_url, json={"id": courseId, "org_id": orgID})  # payload
     if r.text:
         print(f'Unexpected response: {r.text}')
         return 0
 
-    r = bjySession.get('https://m.bjyouth.net/dxx/my-integral?type=2&page=1&limit=15')
-    haveLearned = json.loads(r.text)
+    haveLearned = bjySession.get(learnedInfo).json()
     if f"学习课程：《{title}》" in list(map(lambda x: x['text'], haveLearned['data'])):
         print(f'{title} 成功完成学习')
         return 1
